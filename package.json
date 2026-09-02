@@ -2,5 +2,9 @@
   "name": "trailhead-nz-bike-shops",
   "version": "1.0.0",
   "private": true,
-  "description": "Live price comparison across NZ bike retailers, powered by Claude with web search."
+  "type": "module",
+  "description": "NZ bike shop price comparison, backed by a scheduled cache refresh so it scales to many visitors on free-tier APIs.",
+  "dependencies": {
+    "@upstash/redis": "^1.34.0"
+  }
 }

@@ -1,71 +1,107 @@
-# Trailhead — NZ Bike Shop Price Comparison (Free Version)
+# Trailhead — NZ Bike Shop Price Comparison (Scales, Free)
 
-A static front end + one small serverless function. The function calls
-TinyFish's free Search API (https://docs.tinyfish.ai/search-api) to look up
-each retailer's search results for a product, and pulls a price out of the
-result snippets. No paid API required — TinyFish's Search endpoint is free
-at any wallet balance, including $0, no credit card needed.
+## How this handles many visitors on a free tier
 
-**Tradeoff vs. the paid version:** this reads search-result snippets, not a
-full page. It's less consistently accurate than an AI actually reading the
-product page — some items will show "Not found" even when the product is
-in stock, and promo codes will rarely show up (they're mostly on banners,
-not in search snippets). It's a real live lookup, just a rougher one.
+The earlier version ran a live TinyFish search every time *anyone* clicked
+a product. That's fine for one person testing it, but falls over with real
+traffic — TinyFish's free tier only allows a few requests per minute, and
+enough visitors would exhaust it in seconds.
 
-## Files
+This version separates the two jobs:
 
-- `index.html` — the whole site (product grid, search, comparison modal).
-- `api/lookup.js` — serverless function that calls TinyFish per retailer.
+- **`api/refresh-batch.js`** is the only thing that ever calls TinyFish. A
+  free external scheduler (not Vercel's own cron — see below) hits it
+  every couple of minutes. Each call checks one product from the catalog
+  and saves the result to a shared cache (Redis). It cycles through the
+  whole catalog on a rolling basis — roughly every ~2 hours with a 2-minute
+  schedule.
+- **`api/lookup.js`** is what visitors' clicks actually hit. It reads from
+  that same cache — no TinyFish call, no rate limit, just a fast read.
+  However many people are on the site at once, they're all just reading
+  the same pre-computed data. If a product somehow isn't cached yet (e.g.
+  right after first deploy), it falls back to a live search for that one
+  request and saves the result for next time.
+- A **"Check live now"** button in the product modal bypasses the cache on
+  demand, for anyone who wants the freshest possible check for one item.
 
-## Deploy it (Vercel, free tier)
+This means: fast for everyone (cache reads are near-instant), and total
+TinyFish usage stays flat and predictable no matter how many visitors show
+up, because it's decoupled from visitor traffic entirely.
 
-1. **Get a free TinyFish API key**
-   Go to https://agent.tinyfish.ai/api-keys, sign up, create a key.
-   No credit card required. Check https://docs.tinyfish.ai/search-api or
-   https://tinyfish.ai/pricing for the current free-tier rate limit before
-   you launch, since it does change — the code paces requests to be gentle
-   on it, but very frequent clicking could still hit a rate limit.
+## What you need (all free)
 
-2. **Put this project in a GitHub repo**
-   Create a new repo, add these files, commit, push.
+1. **Vercel** — hosting, same as before.
+2. **Upstash Redis** — the shared cache. Free tier: 500,000 commands/month,
+   256MB storage. No card required. This easily covers hundreds of daily
+   visitors.
+3. **TinyFish** — same as before, free Search API.
+4. **A free external scheduler** — Vercel's own Hobby-plan cron only allows
+   once-per-day, which is too infrequent here. Use a free service like
+   **cron-job.org** instead to call `api/refresh-batch.js` every 2 minutes.
 
-3. **Import into Vercel**
-   - Go to https://vercel.com → New Project → Import your GitHub repo.
-   - Framework preset: "Other" (no build step needed).
-   - Before deploying, add an Environment Variable:
-     - Name: `TINYFISH_API_KEY`
-     - Value: the key from step 1
-   - Click Deploy.
+## Setup
 
-   **Alt (no GitHub, from your machine):**
-   ```bash
-   npm install -g vercel
-   cd trailhead-site
-   vercel
-   vercel env add TINYFISH_API_KEY
-   vercel --prod
-   ```
+### 1. Create a free Upstash Redis database
 
-4. **Test it**
-   Open the deployed URL, click a product. It should show a spinner, then
-   real search results — cheapest one highlighted, and a "Visit" link per
-   retailer straight to the search result TinyFish found.
+- Go to https://upstash.com → sign up (no card) → create a Redis database.
+- On the database page, copy the **REST URL** and **REST Token**
+  (not the regular Redis connection string — you specifically want the
+  REST API credentials, since Vercel serverless functions use those).
+
+### 2. Deploy to Vercel
+
+Same as before — import the GitHub repo, framework preset "Other".
+Before deploying, add these Environment Variables:
+
+| Name | Value |
+|---|---|
+| `TINYFISH_API_KEY` | from agent.tinyfish.ai/api-keys |
+| `UPSTASH_REDIS_REST_URL` | from your Upstash database page |
+| `UPSTASH_REDIS_REST_TOKEN` | from your Upstash database page |
+| `REFRESH_SECRET` | make up any long random string yourself — this protects `api/refresh-batch.js` from randoms spamming your TinyFish quota |
+
+Deploy.
+
+### 3. Set up the free scheduler
+
+- Go to https://cron-job.org → sign up (free) → create a new cron job.
+- URL: `https://YOUR-SITE.vercel.app/api/refresh-batch?secret=YOUR_REFRESH_SECRET`
+  (use the same `REFRESH_SECRET` value you set in Vercel).
+- Schedule: every 2 minutes.
+- Save and enable it.
+
+Within a couple of hours, the whole 60-product catalog will have been
+checked at least once and the cache will be fully warm. From then on,
+every visitor's click is served instantly from cache.
+
+### 4. Verify it's working
+
+- Visit `https://YOUR-SITE.vercel.app/api/refresh-batch?secret=YOUR_REFRESH_SECRET`
+  directly in a browser once — it should return JSON like
+  `{"processed": "Giant Talon 29 3", "cursor": 0, "nextCursor": 1, ...}`.
+  Run it a few more times (or just wait for the scheduler) to warm up more
+  of the catalog.
+- Open the live site and click a product that's already been processed —
+  it should load near-instantly and say "Loaded from cache."
 
 ## If something goes wrong
 
-- **"Server is missing TINYFISH_API_KEY"** — the env var isn't set, or you
-  need to redeploy after adding it (Vercel only picks up new env vars on the
-  next deploy).
-- **Some/most retailers show "Not found"** — expected sometimes. Snippet
-  text doesn't always contain a clean price. If it's happening on nearly
-  every product, double check your API key is valid and not rate-limited.
-- **"Rate limited — try refreshing in a moment"** on a retailer row — you've
-  hit TinyFish's free-tier rate limit. Wait a few seconds and click
-  "Refresh prices" in the modal.
+- **Products show "Not found" for a while after first deploy** — expected;
+  the cache starts empty and fills in over the first couple of hours as
+  the scheduler works through the catalog. Use "Check live now" for an
+  immediate answer on a specific product while you wait.
+- **`api/refresh-batch.js` returns 401** — the `secret` in your cron-job.org
+  URL doesn't match `REFRESH_SECRET` in Vercel's environment variables.
+- **"Server is missing UPSTASH_REDIS_REST_URL..."** — env vars aren't set,
+  or you need to redeploy after adding them.
+- **Site feels slow again** — check that the scheduler is actually running
+  (cron-job.org shows a history/log of each run). If it stopped, cached
+  entries will still work but stop refreshing, and any never-cached
+  product falls back to the slower live path.
 
 ## Cost note
 
-This version has no per-click API cost. Vercel's own free tier covers
-light traffic; if this gets heavy public use, check Vercel's current
-free-tier limits at https://vercel.com/docs/limits before assuming it
-stays $0 indefinitely.
+Genuinely free at this traffic level: Vercel Hobby, TinyFish free tier
+(now only used by the background job, not by visitors), Upstash free tier,
+cron-job.org free tier. Worth periodically checking each provider's
+current free-tier limits, since they do change over time.

@@ -2,6 +2,9 @@
   "functions": {
     "api/lookup.js": {
       "maxDuration": 30
+    },
+    "api/refresh-batch.js": {
+      "maxDuration": 30
     }
   }
 }

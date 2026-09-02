@@ -512,8 +512,8 @@ footer{
 const RETAILERS = [
   { name: "Evo Cycles", domain: "evocycles.co.nz" },
   { name: "99 Bikes", domain: "99bikes.co.nz" },
-  { name: "Torpedo7", domain: "torpedo7.co.nz" },
-  { name: "Bicycle Superstore", domain: "bicyclesuperstore.co.nz" }
+  { name: "Kiwivelo", domain: "kiwivelo.co.nz" },
+  { name: "Hyper Ride", domain: "hyperride.co.nz" }
 ];
 
 const CATEGORIES = [
@@ -706,9 +706,9 @@ function escapeHtml(str){
   return d.innerHTML;
 }
 
-async function runLookup(product){
+async function runLookup(product, force){
   modalBody.innerHTML = `
-    <div class="status-line"><span class="spinner"></span> Searching ${RETAILERS.length} NZ retailers for the ${escapeHtml(product.brand)} ${escapeHtml(product.name)}…</div>
+    <div class="status-line"><span class="spinner"></span> ${force ? 'Checking live prices' : 'Loading'} for the ${escapeHtml(product.brand)} ${escapeHtml(product.name)}…</div>
   `;
 
   try{
@@ -719,7 +719,7 @@ async function runLookup(product){
         brand: product.brand,
         name: product.name,
         catKey: product.cat,
-        retailers: RETAILERS
+        force: !!force
       })
     });
 
@@ -775,6 +775,15 @@ function buildProfileSvg(results, cheapestName){
   </div>`;
 }
 
+function freshnessLabel(data){
+  if (!data.updatedAt) return data.cached ? 'From cache' : 'Just checked live';
+  const mins = Math.round((Date.now() - data.updatedAt) / 60000);
+  if (mins < 1) return 'Updated moments ago';
+  if (mins < 60) return `Updated ${mins} min ago`;
+  const hrs = Math.round(mins / 60);
+  return `Updated ${hrs} hour${hrs === 1 ? '' : 's'} ago`;
+}
+
 function renderResults(product, data){
   const results = Array.isArray(data.results) ? data.results : [];
   const cheapest = data.cheapest_retailer || null;
@@ -803,16 +812,16 @@ function renderResults(product, data){
   }).join('');
 
   modalBody.innerHTML = `
-    <div class="status-line">✓ Live search complete for ${escapeHtml(product.brand)} ${escapeHtml(product.name)}</div>
+    <div class="status-line">✓ ${data.cached ? 'Loaded from cache' : 'Live search complete'} for ${escapeHtml(product.brand)} ${escapeHtml(product.name)} — ${freshnessLabel(data)}</div>
     ${profileSvg}
     <div class="retailer-list">${rows || '<div class="stock-note">No retailer data returned.</div>'}</div>
     <div class="modal-note">
       ${data.note ? escapeHtml(data.note) + '<br/>' : ''}
-      Prices and promo codes are pulled live from the web at the moment you opened this product — they can change or be regional/time-limited. Always confirm the final price and code at checkout.
-      <br/><button class="retry-btn" id="retryBtn">↻ Refresh prices</button>
+      Prices and promo codes are refreshed in the background every couple of hours, not on every click — they can still change or be regional/time-limited. Always confirm the final price and code at checkout.
+      <br/><button class="retry-btn" id="retryBtn">↻ Check live now</button>
     </div>
   `;
-  document.getElementById('retryBtn').addEventListener('click', () => runLookup(product));
+  document.getElementById('retryBtn').addEventListener('click', () => runLookup(product, true));
 }
 
 function renderError(product, err){
@@ -833,7 +842,7 @@ function renderError(product, err){
     </div>
     <button class="retry-btn" id="retryBtn">↻ Try again</button>
   `;
-  document.getElementById('retryBtn').addEventListener('click', () => runLookup(product));
+  document.getElementById('retryBtn').addEventListener('click', () => runLookup(product, true));
 }
 
 /* ---------------- INIT ---------------- */
