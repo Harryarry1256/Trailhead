@@ -1,14 +1,17 @@
 // Serverless function (Vercel). Uses TinyFish's free Search API
-// (https://docs.tinyfish.ai/search-api). Runs retailer checks concurrently
-// (a few at a time) instead of one-by-one for speed, filters out
-// implausible/noisy price matches, and caches results briefly in memory
-// so repeat clicks on the same warm instance are instant.
+// (https://docs.tinyfish.ai/search-api).
+//
+// Important constraint this file works around: TinyFish's free tier is
+// rate-limited to roughly 5 requests/minute. Firing 7 requests at once
+// (one per retailer) blew through that limit, so some retailers silently
+// got a 429 and came back wrong/empty — that's the "glitchy" behavior.
+// Fix: a real rate limiter that paces requests to stay under the limit,
+// plus one retry if a 429 slips through anyway.
 
-const CONCURRENCY = 3;         // how many retailers to check at once
-const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const MAX_REQUESTS_PER_WINDOW = 4;   // stay a little under TinyFish's ~5/min limit
+const WINDOW_MS = 60 * 1000;
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes, per warm instance only
 
-// Realistic NZD price ranges per category, used to reject obviously wrong
-// matches (e.g. a "$5 off" coupon mistaken for the product price).
 const CATEGORY_BOUNDS = {
   mtb:          [300, 15000],
   road:         [400, 18000],
@@ -21,22 +24,36 @@ const CATEGORY_BOUNDS = {
   nutrition:    [2, 150]
 };
 
-// Very small in-memory cache. Only helps within the same warm serverless
-// instance (resets on cold start) — not a substitute for real caching,
-// but free and reduces repeat load noticeably.
-const cache = new Map();
-
-function cacheKey(brand, name, retailerNames) {
-  return `${brand}|${name}|${retailerNames.join(',')}`.toLowerCase();
-}
+// --- simple in-memory rate limiter (per warm serverless instance) ---
+const requestTimes = [];
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Words that, if found right before a matched price, mean it's very
-// likely NOT the product's actual price (a discount amount, shipping,
-// a "was" price, etc).
+async function acquireSlot() {
+  while (true) {
+    const now = Date.now();
+    // drop timestamps older than the window
+    while (requestTimes.length && now - requestTimes[0] > WINDOW_MS) {
+      requestTimes.shift();
+    }
+    if (requestTimes.length < MAX_REQUESTS_PER_WINDOW) {
+      requestTimes.push(now);
+      return;
+    }
+    const waitMs = WINDOW_MS - (now - requestTimes[0]) + 50;
+    await sleep(Math.max(waitMs, 50));
+  }
+}
+
+// --- in-memory cache ---
+const cache = new Map();
+function cacheKey(brand, name, retailerNames) {
+  return `${brand}|${name}|${retailerNames.join(',')}`.toLowerCase();
+}
+
+// --- price extraction ---
 const NOISE_BEFORE = /(off|save|discount|shipping|delivery|was|freight|postage|rrp)\s*[:\-]?\s*$/i;
 
 function extractPrice(text, bounds) {
@@ -53,47 +70,59 @@ function extractPrice(text, bounds) {
     candidates.push(num);
   }
   if (candidates.length === 0) return null;
-  // Prefer the smallest plausible candidate — sale/current prices are
-  // usually lower than "was" prices, and this also naturally skips
-  // any stray larger unrelated numbers that slipped through.
   return Math.min(...candidates);
 }
 
 function extractPromo(text) {
   if (!text) return null;
   const codeMatch = text.match(/\bcode\s*[:\-]?\s*([A-Z0-9]{4,12})\b/i);
-  if (codeMatch) return codeMatch[1].toUpperCase();
-  return null;
+  return codeMatch ? codeMatch[1].toUpperCase() : null;
+}
+
+async function callTinyFish(apiKey, query) {
+  const url = `https://api.search.tinyfish.ai?query=${encodeURIComponent(query)}&location=NZ&language=en`;
+  return fetch(url, { headers: { 'X-API-Key': apiKey } });
 }
 
 async function searchOne(apiKey, retailer, brand, name, bounds) {
-  const query = encodeURIComponent(`${retailer.domain} ${brand} ${name} price`);
-  const url = `https://api.search.tinyfish.ai?query=${query}&location=NZ&language=en`;
+  // site: operator biases results to the retailer's own domain directly,
+  // instead of relying only on post-hoc filtering.
+  const query = `${brand} ${name} price site:${retailer.domain}`;
+  const notFound = { retailer: retailer.name, price: 'Not found', in_stock: null, url: `https://${retailer.domain}`, promo_code: null, promo_details: null };
 
+  await acquireSlot();
   let resp;
   try {
-    resp = await fetch(url, { headers: { 'X-API-Key': apiKey } });
-  } catch (err) {
-    return { retailer: retailer.name, price: 'Not found', in_stock: null, url: `https://${retailer.domain}`, promo_code: null, promo_details: null };
+    resp = await callTinyFish(apiKey, query);
+  } catch {
+    return notFound;
   }
 
   if (resp.status === 429) {
-    return { retailer: retailer.name, price: 'Not found', in_stock: null, url: `https://${retailer.domain}`, promo_code: null, promo_details: 'Rate limited — try refreshing shortly.' };
+    // one retry, after waiting for a fresh slot
+    await acquireSlot();
+    try {
+      resp = await callTinyFish(apiKey, query);
+    } catch {
+      return { ...notFound, promo_details: 'Rate limited — try refreshing shortly.' };
+    }
+    if (resp.status === 429) {
+      return { ...notFound, promo_details: 'Rate limited — try refreshing shortly.' };
+    }
   }
-  if (!resp.ok) {
-    return { retailer: retailer.name, price: 'Not found', in_stock: null, url: `https://${retailer.domain}`, promo_code: null, promo_details: null };
-  }
+
+  if (!resp.ok) return notFound;
 
   const data = await resp.json();
   const results = Array.isArray(data.results) ? data.results : [];
   const onDomain = results.filter(r => r.url && r.url.includes(retailer.domain));
-  const pool = onDomain.length > 0 ? onDomain : results;
+  if (onDomain.length === 0) return notFound;
 
   let bestPrice = null;
   let bestResult = null;
   let promo = null;
 
-  for (const r of pool) {
+  for (const r of onDomain) {
     const p = extractPrice(r.snippet, bounds) ?? extractPrice(r.title, bounds);
     if (p !== null && (bestPrice === null || p < bestPrice)) {
       bestPrice = p;
@@ -101,34 +130,17 @@ async function searchOne(apiKey, retailer, brand, name, bounds) {
     }
     if (!promo) promo = extractPromo(r.snippet);
   }
-
-  if (!bestResult) bestResult = pool[0] || null;
+  if (!bestResult) bestResult = onDomain[0];
 
   return {
     retailer: retailer.name,
     price: bestPrice !== null ? `NZ$${bestPrice.toFixed(2)}` : 'Not found',
     in_stock: null,
-    url: (bestResult && bestResult.url) || `https://${retailer.domain}`,
+    url: bestResult.url || `https://${retailer.domain}`,
     promo_code: promo,
     promo_details: promo ? 'Mentioned in search result snippet — verify at checkout.' : null,
     _priceNum: bestPrice
   };
-}
-
-// Runs async tasks with a concurrency cap instead of all-at-once or
-// fully one-by-one.
-async function runWithConcurrency(items, limit, worker) {
-  const results = new Array(items.length);
-  let next = 0;
-  async function runner() {
-    while (next < items.length) {
-      const i = next++;
-      results[i] = await worker(items[i], i);
-    }
-  }
-  const runners = Array.from({ length: Math.min(limit, items.length) }, runner);
-  await Promise.all(runners);
-  return results;
 }
 
 export default async function handler(req, res) {
@@ -144,7 +156,6 @@ export default async function handler(req, res) {
   }
 
   const { brand, name, catKey, retailers } = req.body || {};
-
   if (!brand || !name || !Array.isArray(retailers) || retailers.length === 0) {
     res.status(400).json({ error: 'Missing brand, name, or retailers in request body.' });
     return;
@@ -160,25 +171,26 @@ export default async function handler(req, res) {
     return;
   }
 
-  const results = await runWithConcurrency(retailers, CONCURRENCY, (retailer) =>
-    searchOne(apiKey, retailer, brand, name, bounds)
+  // Requests are launched together, but each one internally waits its
+  // turn at acquireSlot() — so this stays rate-limit-safe while letting
+  // response parsing overlap.
+  const results = await Promise.all(
+    retailers.map(retailer => searchOne(apiKey, retailer, brand, name, bounds))
   );
 
   const withPrices = results.filter(r => typeof r._priceNum === 'number');
-  let cheapest = null;
-  if (withPrices.length > 0) {
-    cheapest = withPrices.reduce((a, b) => (a._priceNum <= b._priceNum ? a : b)).retailer;
-  }
+  const cheapest = withPrices.length
+    ? withPrices.reduce((a, b) => (a._priceNum <= b._priceNum ? a : b)).retailer
+    : null;
 
   const cleanResults = results.map(({ _priceNum, ...rest }) => rest);
 
   const payload = {
     results: cleanResults,
     cheapest_retailer: cheapest,
-    note: 'Prices are extracted from live search-result snippets (free tier), filtered against a realistic price range for this category. Some listings may still show "Not found" or an off price — always confirm on the retailer\'s site.'
+    note: 'Prices are extracted from live search-result snippets (free tier), filtered against a realistic price range and matched only to results on the retailer\'s own site. Always confirm on the retailer\'s site.'
   };
 
   cache.set(key, { time: Date.now(), payload });
-
   res.status(200).json(payload);
 }
