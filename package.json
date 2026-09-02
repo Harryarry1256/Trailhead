@@ -1,0 +1,6 @@
+{
+  "name": "trailhead-nz-bike-shops",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Live price comparison across NZ bike retailers, powered by Claude with web search."
+}
