@@ -18,6 +18,8 @@ import { fetchLivePrices } from '../lib/priceEngine.js';
 
 const CURSOR_KEY = 'refresh:cursor';
 
+const BATCH_SIZE = 5; // 5 products × 4 retailers = 20 calls/run, safely under the real 30/min limit
+
 export default async function handler(req, res) {
   const secret = req.query?.secret || req.headers['x-refresh-secret'];
   if (!process.env.REFRESH_SECRET || secret !== process.env.REFRESH_SECRET) {
@@ -47,24 +49,27 @@ export default async function handler(req, res) {
     cursor = 0;
   }
 
-  const product = PRODUCTS[cursor % PRODUCTS.length];
-  const nextCursor = (cursor + 1) % PRODUCTS.length;
+  const processed = [];
+  for (let i = 0; i < BATCH_SIZE; i++) {
+    const product = PRODUCTS[(cursor + i) % PRODUCTS.length];
+    const payload = await fetchLivePrices(apiKey, product.brand, product.name, product.cat, RETAILERS);
+    const payloadWithMeta = { ...payload, cached: true, updatedAt: Date.now() };
+    try {
+      await redis.set(cacheKeyFor(product.brand, product.name), JSON.stringify(payloadWithMeta), { ex: 6 * 60 * 60 });
+    } catch (err) {
+      res.status(500).json({ error: `Refreshed but failed to save to cache: ${err.message}`, processed });
+      return;
+    }
+    processed.push(`${product.brand} ${product.name}`);
+  }
 
-  const payload = await fetchLivePrices(apiKey, product.brand, product.name, product.cat, RETAILERS);
-  const payloadWithMeta = { ...payload, cached: true, updatedAt: Date.now() };
-
+  const nextCursor = (cursor + BATCH_SIZE) % PRODUCTS.length;
   try {
-    await redis.set(cacheKeyFor(product.brand, product.name), JSON.stringify(payloadWithMeta), { ex: 6 * 60 * 60 });
     await redis.set(CURSOR_KEY, nextCursor);
   } catch (err) {
-    res.status(500).json({ error: `Refreshed but failed to save to cache: ${err.message}` });
+    res.status(500).json({ error: `Processed but failed to save cursor: ${err.message}`, processed });
     return;
   }
 
-  res.status(200).json({
-    processed: `${product.brand} ${product.name}`,
-    cursor,
-    nextCursor,
-    totalProducts: PRODUCTS.length
-  });
+  res.status(200).json({ processed, cursor, nextCursor, totalProducts: PRODUCTS.length });
 }
