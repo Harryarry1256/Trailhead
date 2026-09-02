@@ -721,7 +721,7 @@ async function runLookup(product){
       body: JSON.stringify({
         brand: product.brand,
         name: product.name,
-        category: categoryLabel(product.cat),
+        catKey: product.cat,
         retailers: RETAILERS
       })
     });
