@@ -1,5 +1,3 @@
-
-tests/priceEngine.test.js
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { extractPrice, titleMatches, isProductUrl, fetchLivePrices } from '../lib/priceEngine.js';
@@ -66,6 +64,12 @@ test('keeps a top-level price heading attached to the product', async () => {
   const result = await lookup(mockProvider({ pages: [realistic] }));
   assert.equal(result.results[0].status, 'verified');
   assert.equal(result.results[0].price_amount, 1099);
+});
+test('ignores retailer finance and service-plan prices after the product price', async () => {
+  const realistic = { ...page, text: `# ${title}\n\n### Mountain Bike\n\n## 906.67\n\nUp to 36 months interest free\n\n#### CHOOSE SIZE/COLOUR\n\n*Large ($906.67)*\n\n### Finance Options\n\nMinimum purchase $250\n\n#### Maintenance Packages\n\nGold service plan $199` };
+  const result = await lookup(mockProvider({ pages: [realistic] }));
+  assert.equal(result.results[0].status, 'verified');
+  assert.equal(result.results[0].price_amount, 906.67);
 });
 test('uses the matching search title when a retailer page title is generic', async () => {
   const result = await lookup(mockProvider({ pages: [{ ...page, title: 'Evo Cycles' }] }));
