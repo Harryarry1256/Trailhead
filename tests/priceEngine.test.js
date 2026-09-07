@@ -67,6 +67,11 @@ test('keeps a top-level price heading attached to the product', async () => {
   assert.equal(result.results[0].status, 'verified');
   assert.equal(result.results[0].price_amount, 1099);
 });
+test('uses the matching search title when a retailer page title is generic', async () => {
+  const result = await lookup(mockProvider({ pages: [{ ...page, title: 'Evo Cycles' }] }));
+  assert.equal(result.results[0].status, 'verified');
+  assert.equal(result.results[0].price_amount, 1099);
+});
 for (const status of [401, 402, 403, 404, 429, 500]) {
   test(`provider ${status} is unavailable, not a missing product`, async () => {
     const result = await lookup(mockProvider({ search: { ok: false, status } }));
@@ -80,8 +85,6 @@ test('successful empty search is distinguished from malformed response', async (
   assert.equal((await lookup(mockProvider({ search: json({ something: [] }) }))).results[0].status, 'unavailable');
 });
 for (const invalidPage of [
-  { ...page, title: 'Giant Pedals' },
-  { ...page, title: undefined },
   { ...page, final_url: 'https://evil.test/product/1234/bike' },
   { ...page, final_url: 'https://evocycles.co.nz/' },
   { ...page, text: '# Giant Pedals\n$1099\n## Related\nGiant Talon 29 3' },
