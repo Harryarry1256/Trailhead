@@ -29,7 +29,7 @@ test('late results from previous product cannot overwrite current product', asyn
   assert.equal(pending[0].init.signal.aborted, true);
   pending[1].resolve({ ok: true, json: async () => result(1599) }); await second;
   const current = elements.get('modalBody').innerHTML;
-  assert.match(current, /Marlin 7/);
+  assert.match(current, /NZ\$1599/);
   pending[0].resolve({ ok: true, json: async () => result(1099) }); await first;
   assert.equal(elements.get('modalBody').innerHTML, current);
 });
@@ -54,7 +54,7 @@ test('stale saved results keep their price and show an age warning', () => {
   vm.runInContext('renderResults(PRODUCTS[0], testData)', context);
   assert.match(elements.get('modalBody').innerHTML, /NZ\$1099/);
   assert.match(elements.get('modalBody').innerHTML, /over six hours old/);
-  assert.match(elements.get('modalBody').innerHTML, /Reload saved prices/);
+  assert.match(elements.get('modalBody').innerHTML, /Reload prices/);
   assert.doesNotMatch(elements.get('modalBody').innerHTML, /Check live now/);
 });
 test('a pending product is not presented as an out-of-stock or no-match result', () => {
@@ -73,5 +73,5 @@ test('reload reads the cache without a force flag', async () => {
   assert.equal(JSON.parse(pending[0].init.body).force, undefined);
   pending[0].resolve({ ok: true, json: async () => ({ ...result(), cached: true }) });
   await request;
-  assert.match(elements.get('modalBody').innerHTML, /Loaded from cache/);
+  assert.match(elements.get('modalBody').innerHTML, /Updated moments ago/);
 });
