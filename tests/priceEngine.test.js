@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractPrice, titleMatches, isProductUrl, fetchLivePrices } from '../lib/priceEngine.js';
+import { extractPrice, extractEmbeddedPrice, titleMatches, isProductUrl, fetchLivePrices } from '../lib/priceEngine.js';
 const bounds = [2, 18000];
 const retailer = { name: 'Evo Cycles', domain: 'evocycles.co.nz' };
 const url = 'https://www.evocycles.co.nz/Product/602857/2025-giant-talon-29-3-frost-silver';
@@ -36,6 +36,19 @@ test('model identity retains accents, word boundaries and electric plus', () => 
   assert.equal(titleMatches('Giant Explore E 3', 'Giant', 'Explore E+ 3'), false);
   assert.equal(titleMatches('Giro Fixture MIPS pad kit', 'Giro', 'Fixture MIPS'), false);
   assert.equal(titleMatches('Giant Talon 3 29" MTB - Panther', 'Giant', 'Talon 29 3'), true);
+});
+test('reads the exact product price embedded in retailer HTML', () => {
+  const html = `<h1 id="product-title">Giant Talon 3 29&quot; MTB - Beeswax</h1>
+    <span id="product-price-dollars">906</span><span id="product-price-cents">.67</span>
+    <script>window.dataLayer.push({"ecommerce":{"items":[{"item_name":"Giant Talon 3 29\\\" MTB - Beeswax","item_brand":"Giant","price":906.67},{"item_name":"Polygon Cascade 3","item_brand":"Polygon","price":657.06}]}})</script>`;
+  assert.deepEqual(extractEmbeddedPrice(html, 'Giant', 'Talon 29 3', [300, 15000]), {
+    title: 'Giant Talon 3 29" MTB - Beeswax', price: 906.67
+  });
+});
+test('rejects embedded prices without the exact product identity', () => {
+  const html = `<h1 id="product-title">Giant Talon 3 29&quot; MTB - Beeswax</h1>
+    <span id="product-price-dollars">906</span><span id="product-price-cents">.67</span>`;
+  assert.equal(extractEmbeddedPrice(html, 'Trek', 'Marlin 7', [300, 15000]), null);
 });
 test('retailer URL validation excludes redirects, categories and staging', () => {
   assert.equal(isProductUrl(url, retailer.domain), true);
