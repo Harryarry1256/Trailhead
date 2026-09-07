@@ -601,7 +601,7 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
   renderGrid();
 });
 
-/* ---------------- MODAL + LIVE LOOKUP ---------------- */
+/* ---------------- MODAL + CACHED PRICES ---------------- */
 const modalBackdrop = document.getElementById('modalBackdrop');
 const modalBrand = document.getElementById('modalBrand');
 const modalTitle = document.getElementById('modalTitle');
@@ -613,10 +613,8 @@ document.addEventListener('keydown', (e) => { if(e.key === 'Escape') closeModal(
 
 let lookupSequence = 0;
 let lookupController;
-let retryTimer;
 
 function closeModal(){
-  clearTimeout(retryTimer);
   lookupSequence++;
   lookupController?.abort();
   modalBackdrop.classList.remove('open');
@@ -635,15 +633,14 @@ function escapeHtml(str){
   return d.innerHTML;
 }
 
-async function runLookup(product, force){
-  clearTimeout(retryTimer);
+async function runLookup(product){
   const sequence = ++lookupSequence;
   lookupController?.abort();
   const controller = new AbortController();
   lookupController = controller;
   const timeout = setTimeout(() => controller.abort(), 28000);
   modalBody.innerHTML = `
-    <div class="status-line"><span class="spinner"></span> ${force ? 'Checking live prices' : 'Loading'} for the ${escapeHtml(product.brand)} ${escapeHtml(product.name)}…</div>
+    <div class="status-line"><span class="spinner"></span> Loading saved prices for the ${escapeHtml(product.brand)} ${escapeHtml(product.name)}…</div>
   `;
 
   try{
@@ -654,8 +651,7 @@ async function runLookup(product, force){
       body: JSON.stringify({
         brand: product.brand,
         name: product.name,
-        catKey: product.cat,
-        force: !!force
+        catKey: product.cat
       })
     });
 
@@ -690,7 +686,7 @@ function providerErrorLabel(code){
 }
 
 function freshnessLabel(data){
-  if (!data.updatedAt) return data.cached ? 'From cache' : 'Just checked live';
+  if (!data.updatedAt) return 'Awaiting scheduled update';
   const mins = Math.round((Date.now() - data.updatedAt) / 60000);
   if (mins < 1) return 'Updated moments ago';
   if (mins < 60) return `Updated ${mins} min ago`;
@@ -727,36 +723,22 @@ function renderResults(product, data){
   }).join('');
 
   modalBody.innerHTML = `
-    <div class="status-line">${data.complete ? '✓' : '⚠'} ${data.cached ? 'Loaded from cache' : data.complete ? 'Check complete' : 'Some results could not be verified'} for ${escapeHtml(product.brand)} ${escapeHtml(product.name)} — ${freshnessLabel(data)}</div>
-    ${data.refreshFailed ? '<div class="stock-note">Some checks could not finish. Keeping previous verified prices where needed; the time above shows the oldest check.</div>' : ''}
-    <div class="retailer-list">${rows || '<div class="stock-note">No retailer data returned.</div>'}</div>
+    <div class="status-line">${data.pending || data.stale ? '◷' : '✓'} ${data.pending ? 'Awaiting saved prices' : 'Loaded from cache'} for ${escapeHtml(product.brand)} ${escapeHtml(product.name)} — ${freshnessLabel(data)}</div>
+    ${data.stale ? '<div class="stock-note">These saved results are over six hours old and awaiting a scheduled refresh. Confirm the current price at the retailer.</div>' : ''}
+    <div class="retailer-list">${rows || '<div class="stock-note">No saved retailer prices yet. This does not mean the product is out of stock.</div>'}</div>
     <div class="modal-note">
       ${data.note ? escapeHtml(data.note) + '<br/>' : ''}
-      Results may come from a previous check; see the timestamp above. “No matching listing” means search found no verified match, not that the retailer is out of stock. Use “Check live now” to request a fresh check.
-      <br/><button class="retry-btn" id="retryBtn">↻ Check live now</button>
+      Prices update automatically on a schedule; see the last-check time above. “No matching listing” means the last scheduled check found no verified match, not that the retailer is out of stock. Reloading reads the latest saved results.
+      <br/><button class="retry-btn" id="retryBtn">↻ Reload saved prices</button>
     </div>
   `;
-  const retry = document.getElementById('retryBtn');
-  retry.addEventListener('click', () => { if (!retry.disabled) runLookup(product, true); });
-  clearTimeout(retryTimer);
-  if (Number.isFinite(data.retryAfter) && data.retryAfter > 0) {
-    const readyAt = Date.now() + data.retryAfter * 1000;
-    const sequence = lookupSequence;
-    const tick = () => {
-      if (sequence !== lookupSequence) return;
-      const seconds = Math.max(0, Math.ceil((readyAt - Date.now()) / 1000));
-      retry.disabled = seconds > 0;
-      retry.textContent = seconds ? `Available again in ${seconds}s` : '↻ Check live now';
-      if (seconds) retryTimer = setTimeout(tick, 1000);
-    };
-    tick();
-  }
+  document.getElementById('retryBtn').addEventListener('click', () => runLookup(product));
 }
 
 function renderError(product, err){
   modalBody.innerHTML = `
     <div class="error-box">
-      Couldn't complete a live lookup right now (${escapeHtml(err.message || 'unknown error')}).
+      Couldn't load saved prices right now (${escapeHtml(err.message || 'unknown error')}).
     </div>
     <div class="modal-note">
       In the meantime, here are the retailers to check directly:
@@ -771,7 +753,7 @@ function renderError(product, err){
     </div>
     <button class="retry-btn" id="retryBtn">↻ Try again</button>
   `;
-  document.getElementById('retryBtn').addEventListener('click', () => runLookup(product, true));
+  document.getElementById('retryBtn').addEventListener('click', () => runLookup(product));
 }
 
 /* ---------------- INIT ---------------- */
