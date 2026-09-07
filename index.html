@@ -613,8 +613,10 @@ document.addEventListener('keydown', (e) => { if(e.key === 'Escape') closeModal(
 
 let lookupSequence = 0;
 let lookupController;
+let retryTimer;
 
 function closeModal(){
+  clearTimeout(retryTimer);
   lookupSequence++;
   lookupController?.abort();
   modalBackdrop.classList.remove('open');
@@ -634,6 +636,7 @@ function escapeHtml(str){
 }
 
 async function runLookup(product, force){
+  clearTimeout(retryTimer);
   const sequence = ++lookupSequence;
   lookupController?.abort();
   const controller = new AbortController();
@@ -680,7 +683,7 @@ function safeRetailerUrl(result){
 }
 
 function providerErrorLabel(code){
-  if (code === 'rate_limited') return 'Search limit reached; try again shortly.';
+  if (code === 'rate_limited') return 'Price checks are temporarily paused while the search allowance resets.';
   if (['provider_http_401', 'provider_http_402', 'provider_http_403', 'provider_http_404'].includes(code)) return 'Search provider access needs attention from the site owner.';
   if (code === 'timeout') return 'Retailer check timed out; try again.';
   return 'Retailer could not be checked. This is not an out-of-stock result.';
@@ -725,6 +728,7 @@ function renderResults(product, data){
 
   modalBody.innerHTML = `
     <div class="status-line">${data.complete ? '✓' : '⚠'} ${data.cached ? 'Loaded from cache' : data.complete ? 'Check complete' : 'Some results could not be verified'} for ${escapeHtml(product.brand)} ${escapeHtml(product.name)} — ${freshnessLabel(data)}</div>
+    ${data.refreshFailed ? '<div class="stock-note">Some checks could not finish. Keeping previous verified prices where needed; the time above shows the oldest check.</div>' : ''}
     <div class="retailer-list">${rows || '<div class="stock-note">No retailer data returned.</div>'}</div>
     <div class="modal-note">
       ${data.note ? escapeHtml(data.note) + '<br/>' : ''}
@@ -732,7 +736,21 @@ function renderResults(product, data){
       <br/><button class="retry-btn" id="retryBtn">↻ Check live now</button>
     </div>
   `;
-  document.getElementById('retryBtn').addEventListener('click', () => runLookup(product, true));
+  const retry = document.getElementById('retryBtn');
+  retry.addEventListener('click', () => { if (!retry.disabled) runLookup(product, true); });
+  clearTimeout(retryTimer);
+  if (Number.isFinite(data.retryAfter) && data.retryAfter > 0) {
+    const readyAt = Date.now() + data.retryAfter * 1000;
+    const sequence = lookupSequence;
+    const tick = () => {
+      if (sequence !== lookupSequence) return;
+      const seconds = Math.max(0, Math.ceil((readyAt - Date.now()) / 1000));
+      retry.disabled = seconds > 0;
+      retry.textContent = seconds ? `Available again in ${seconds}s` : '↻ Check live now';
+      if (seconds) retryTimer = setTimeout(tick, 1000);
+    };
+    tick();
+  }
 }
 
 function renderError(product, err){

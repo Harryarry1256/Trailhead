@@ -2,9 +2,11 @@
 import { Redis } from '@upstash/redis';
 import { RETAILERS, PRODUCTS, cacheKeyFor } from '../lib/catalog.js';
 import { fetchLivePrices } from '../lib/priceEngine.js';
-import { CACHE_VERSION, cacheTtl } from '../lib/cache.js';
+import { CACHE_VERSION, cacheTtl, readCached } from '../lib/cache.js';
+import { createProviderFetch } from '../lib/provider.js';
 
 const CURSOR_KEY = 'refresh:cursor';
+let providerFetch;
 
 export default async function handler(req, res) {
   const secret = req.query?.secret || req.headers['x-refresh-secret'];
@@ -20,7 +22,14 @@ export default async function handler(req, res) {
     const stored = Number(await redis.get(CURSOR_KEY));
     const cursor = Number.isInteger(stored) && stored >= 0 ? stored % PRODUCTS.length : 0;
     const product = PRODUCTS[cursor];
-    const payload = await fetchLivePrices(apiKey, product.brand, product.name, product.cat, RETAILERS);
+    const key = cacheKeyFor(product.brand, product.name);
+    const cached = readCached(await redis.get(key));
+    if (cached) {
+      await redis.set(CURSOR_KEY, (cursor + 1) % PRODUCTS.length);
+      return res.status(200).json({ skipped: 'Prices are still fresh', cursor });
+    }
+    providerFetch ||= createProviderFetch(redis, apiKey);
+    const payload = await fetchLivePrices(apiKey, product.brand, product.name, product.cat, RETAILERS, { providerFetch });
     const ttl = cacheTtl(payload);
     if (ttl) {
       await redis.set(cacheKeyFor(product.brand, product.name), JSON.stringify({

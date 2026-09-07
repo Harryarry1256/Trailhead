@@ -15,6 +15,13 @@ function mockProvider({ search, pages = [page], errors = [], fetchError } = {}) 
 }
 const lookup = fetchImpl => fetchLivePrices('test-key', 'Giant', 'Talon 29 3', 'mtb', [retailer], { fetchImpl });
 
+test('a rate-limited search is not retried with alternative queries', async () => {
+  let calls = 0;
+  const result = await lookup(async () => { calls++; return new Response('', { status: 429, headers: { 'Retry-After': '45' } }); });
+  assert.equal(calls, 1); assert.equal(result.retryAfter, 45);
+  assert.equal(result.results[0].error_code, 'rate_limited');
+});
+
 for (const [input, expected] of [
   ['$1099.00', 1099], ['$1,099.00', 1099], ['NZ$12999.99', 12999.99],
   ['## 1099.00', 1099], ['Price: 1099.00 NZD', 1099],

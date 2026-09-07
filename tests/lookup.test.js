@@ -41,3 +41,22 @@ test('unexpected provider errors return a useful failure response', async () => 
   const res = response(); await handler({ method: 'POST', body: product }, res);
   assert.equal(res.code, 503); assert.doesNotMatch(res.body.error, /internal/);
 });
+test('a rate-limited forced refresh preserves verified prices and their original timestamp', async () => {
+  let writes = 0;
+  const handler = createHandler({ redisFactory: () => ({ get: async () => cached, set: async () => writes++ }),
+    lookup: async () => ({ complete: false, retryAfter: 45, results: [{ retailer: 'Evo Cycles', status: 'unavailable', error_code: 'rate_limited', price_amount: null }] }) });
+  const res = response(); await handler({ method: 'POST', body: { ...product, force: true } }, res);
+  assert.equal(res.body.results[0].price_amount, 1099);
+  assert.equal(res.body.updatedAt, cached.updatedAt);
+  assert.equal(res.body.refreshFailed, true); assert.equal(res.body.retryAfter, 45);
+  assert.equal(writes, 0);
+});
+test('concurrent checks for the same product share one live lookup', async () => {
+  let finish; let calls = 0;
+  const handler = createHandler({ redisFactory: () => null, lookup: () => { calls++; return new Promise(resolve => { finish = resolve; }); } });
+  const a = response(); const b = response();
+  const first = handler({ method: 'POST', body: product }, a);
+  const second = handler({ method: 'POST', body: product }, b);
+  await Promise.resolve(); finish(payload); await Promise.all([first, second]);
+  assert.equal(calls, 1); assert.equal(a.body.results[0].price_amount, 1099); assert.deepEqual(a.body.results, b.body.results);
+});

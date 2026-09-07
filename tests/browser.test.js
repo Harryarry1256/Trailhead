@@ -48,3 +48,13 @@ test('retailer links reject foreign hosts and escape quoted attributes', () => {
   assert.doesNotMatch(elements.get('modalBody').innerHTML, /href="https:\/\/evil|<script>/);
   assert.match(elements.get('modalBody').innerHTML, /&lt;script&gt;/);
 });
+test('rate-limit countdown disables retry and preserves the cached price display', () => {
+  const { context, elements } = setup();
+  context.testData = { ...result(), cached: true, refreshFailed: true, retryAfter: 45 };
+  vm.runInContext('renderResults(PRODUCTS[0], testData)', context);
+  assert.match(elements.get('modalBody').innerHTML, /NZ\$1099/);
+  assert.match(elements.get('modalBody').innerHTML, /previous verified prices/);
+  assert.equal(elements.get('retryBtn').disabled, true);
+  assert.match(elements.get('retryBtn').textContent, /Available again in 45s/);
+  vm.runInContext('closeModal()', context);
+});
