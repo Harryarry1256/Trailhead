@@ -1,74 +1,50 @@
-// Serverless function (Vercel). Serves price comparisons primarily from
-// a persistent cache (Upstash Redis, free tier), which is kept warm by
-// api/refresh-batch.js running on a schedule. This is what lets the site
-// handle many simultaneous visitors on TinyFish's free (heavily
-// rate-limited) tier: user traffic reads the cache — fast, and never
-// touches TinyFish's rate limit — while a separate background job is the
-// only thing that actually calls TinyFish.
-//
-// If a product hasn't been cached yet (e.g. right after first deploy,
-// before the background job has reached it), this falls back to a live
-// lookup so the page still works, then saves that result for next time.
-
 import { Redis } from '@upstash/redis';
-import { RETAILERS, cacheKeyFor } from '../lib/catalog.js';
+import { RETAILERS, PRODUCTS, cacheKeyFor } from '../lib/catalog.js';
 import { fetchLivePrices } from '../lib/priceEngine.js';
+import { CACHE_VERSION, cacheTtl, readCached } from '../lib/cache.js';
 
-function getRedis() {
+export function createHandler({ redisFactory = () => {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-  return new Redis({ url, token });
-}
-
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Use POST' });
-    return;
-  }
-
-  const { brand, name, catKey, force } = req.body || {};
-  if (!brand || !name) {
-    res.status(400).json({ error: 'Missing brand or name in request body.' });
-    return;
-  }
-
-  const redis = getRedis();
-  const key = cacheKeyFor(brand, name);
-
-  if (redis && !force) {
+  return url && token ? new Redis({ url, token, retry: false, signal: () => AbortSignal.timeout(1000) }) : null;
+}, lookup = fetchLivePrices } = {}) {
+  return async function handler(req, res) {
+    res.setHeader('Cache-Control', 'no-store');
+    if (req.method !== 'POST') {
+      res.setHeader('Allow', 'POST');
+      return res.status(405).json({ error: 'Use POST' });
+    }
+    const { brand, name, catKey, force } = req.body || {};
+    if (typeof brand !== 'string' || typeof name !== 'string' ||
+        (force !== undefined && typeof force !== 'boolean')) {
+      return res.status(400).json({ error: 'Invalid product lookup request.' });
+    }
+    const product = PRODUCTS.find(p => p.brand === brand && p.name === name);
+    if (!product || (catKey !== undefined && catKey !== product.cat)) {
+      return res.status(400).json({ error: 'Choose a product from the catalog.' });
+    }
+    let redis;
+    try { redis = redisFactory(); } catch { redis = null; }
+    const key = cacheKeyFor(brand, name);
+    if (redis && !force) {
+      try {
+        const cached = readCached(await redis.get(key));
+        if (cached) return res.status(200).json({ ...cached, cached: true });
+      } catch { /* A failed cache read may fall back to the live provider. */ }
+    }
+    const apiKey = process.env.TINYFISH_API_KEY;
+    if (!apiKey) return res.status(503).json({ error: 'Price lookup is not configured. The site owner must check the search provider settings.' });
     try {
-      const cached = await redis.get(key);
-      if (cached) {
-        // @upstash/redis auto-parses JSON values
-        const payload = typeof cached === 'string' ? JSON.parse(cached) : cached;
-        res.status(200).json({ ...payload, cached: true });
-        return;
+      const payload = await lookup(apiKey, brand, name, product.cat, RETAILERS);
+      const result = { ...payload, schemaVersion: CACHE_VERSION, cached: false, updatedAt: Date.now() };
+      const ttl = cacheTtl(payload);
+      if (redis && ttl) {
+        try { await redis.set(key, JSON.stringify(result), { ex: ttl }); } catch { /* Non-fatal. */ }
       }
-    } catch (err) {
-      // Cache read failed — fall through to a live lookup rather than error out.
+      return res.status(200).json(result);
+    } catch {
+      return res.status(503).json({ error: 'Price lookup is temporarily unavailable. Please try again.' });
     }
-  }
-
-  const apiKey = process.env.TINYFISH_API_KEY;
-  if (!apiKey) {
-    res.status(500).json({ error: 'Server is missing TINYFISH_API_KEY. Set it in your Vercel project settings.' });
-    return;
-  }
-
-  const payload = await fetchLivePrices(apiKey, brand, name, catKey, RETAILERS);
-  const payloadWithMeta = { ...payload, cached: false, updatedAt: Date.now() };
-
-  if (redis) {
-    try {
-      // 6 hour safety-net TTL — the background refresh job should
-      // overwrite this well before it expires, but this stops permanently
-      // stale data from lingering if the refresh job ever stops running.
-      await redis.set(key, JSON.stringify(payloadWithMeta), { ex: 6 * 60 * 60 });
-    } catch (err) {
-      // Non-fatal — the user still gets their live result even if caching it fails.
-    }
-  }
-
-  res.status(200).json(payloadWithMeta);
+  };
 }
+export default createHandler();
