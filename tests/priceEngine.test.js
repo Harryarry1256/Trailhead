@@ -1,3 +1,5 @@
+
+tests/priceEngine.test.js
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { extractPrice, titleMatches, isProductUrl, fetchLivePrices } from '../lib/priceEngine.js';
@@ -52,6 +54,18 @@ test('reads the actual main product price, not snippet or related product', asyn
   assert.equal(result.results[0].in_stock, null);
   assert.equal(result.cheapest_retailer, null);
   assert.equal(result.complete, true);
+});
+test('accepts a real product page with title, price and later sections', async () => {
+  const realistic = { ...page, text: `# ${title}\n\n## 1099.00\n\nADD TO CART\n\n# Description\n\nThis hardtail has a lightweight frame.\n\n# Specifications\n\n29 inch wheels.` };
+  const result = await lookup(mockProvider({ pages: [realistic] }));
+  assert.equal(result.results[0].status, 'verified');
+  assert.equal(result.results[0].price_amount, 1099);
+});
+test('keeps a top-level price heading attached to the product', async () => {
+  const realistic = { ...page, text: `# ${title}\n\n# 1099.00\n\nADD TO CART\n\n# Description\n\n29 inch wheels.` };
+  const result = await lookup(mockProvider({ pages: [realistic] }));
+  assert.equal(result.results[0].status, 'verified');
+  assert.equal(result.results[0].price_amount, 1099);
 });
 for (const status of [401, 402, 403, 404, 429, 500]) {
   test(`provider ${status} is unavailable, not a missing product`, async () => {
