@@ -58,9 +58,13 @@ export function createHandler({ redisFactory = () => new Redis({
       }));
       const nextCursor = (cursor + batch.length) % PRODUCTS.length;
       await redis.set(CURSOR_KEY, nextCursor);
-      return res.status(outcomes.every(o => o.payload.complete) ? 200 : 502).json({
+      // A missing listing or provider timeout is a product-level result, not
+      // a failed scheduler run. Complete products are saved and errors remain
+      // visible in the response while the cursor advances.
+      return res.status(200).json({
         processed: batch.map(p => `${p.brand} ${p.name}`),
         saved: outcomes.every(o => o.saved), savedCount: outcomes.filter(o => o.saved).length,
+        partial: outcomes.some(o => !o.payload.complete),
         cursor, nextCursor, totalProducts: PRODUCTS.length,
         errors: outcomes.flatMap(o => o.payload.results
           .filter(r => r.status === 'unavailable' || r.status === 'unverified')

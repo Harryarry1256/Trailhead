@@ -40,7 +40,7 @@ test('a failed scheduled check leaves the old price and expiry untouched, and ad
   redis.entries.set(key, previous);
   const handler = createHandler({ batchSize: 1, redisFactory: () => redis, lookup: async () => ({ complete: false, results: [{ status: 'unavailable', error_code: 'rate_limited' }] }) });
   const res = response(); await handler(req, res);
-  assert.equal(res.code, 502); assert.equal(res.body.saved, false);
+  assert.equal(res.code, 200); assert.equal(res.body.partial, true); assert.equal(res.body.saved, false);
   assert.equal(redis.entries.get(key), previous); assert.equal(redis.entries.get('refresh:cursor'), 1);
   assert.deepEqual(redis.writes.map(w => w.key), ['refresh:cursor']);
 });
@@ -71,7 +71,7 @@ test('batch saves a successful product while preserving a failed product snapsho
     name === PRODUCTS[0].name ? { complete: false, rediscover: true, results: [{ status: 'unavailable' }] } : result });
   const res = response(); await handler(req, res);
   assert.equal(res.body.savedCount, 1);
-  assert.equal(res.code, 502);
+  assert.equal(res.code, 200); assert.equal(res.body.partial, true);
   assert.equal(redis.entries.get(firstKey), old);
   assert.equal(redis.entries.get(`discovery:v1:${firstKey}`), false);
   assert.equal(redis.entries.get('refresh:cursor'), 2);

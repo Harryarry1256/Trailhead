@@ -72,7 +72,8 @@ not remove provider limits or guarantee access to every retailer.
 
 The response reports `processed`, `saved`, `savedCount`, `cursor`, `nextCursor`
 and `totalProducts`. A partial batch saves its successful product independently,
-returns HTTP 502 with product/retailer errors, and advances past both products.
+returns HTTP 200 with `partial: true` and product/retailer errors, and advances
+past both products so one incomplete product does not make the scheduler fail.
 Failed products retain their original saved price timestamps and expiry. Visitor
 lookups remain cache-only and consume no search or fetch allowance.
 
