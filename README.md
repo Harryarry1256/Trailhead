@@ -53,24 +53,34 @@ Configure an external scheduler to request `GET /api/refresh-batch` with an
 `x-refresh-secret` header matching `REFRESH_SECRET`. The legacy `?secret=...`
 query is still accepted, but the header avoids putting the secret in URLs.
 
-Each call refreshes **one** product, even when its previous snapshot is still
-fresh, so a catalog pass renews data before it expires. It may use up to three
-searches per retailer and a fetch batch of up to eight pages, with work bounded
-to 24 seconds. At a two-minute interval, 160 products take about 5 hours 20 minutes
-to cycle. Only scheduled refreshes use the provider allowance. Shared Redis pacing
-and cached search discovery reduce repeat calls; page prices are still extracted
-from fetched matching retailer pages on each refresh.
+Each call refreshes **two** products concurrently with the same 24-second
+per-product deadline and shared provider pacing. At a two-minute scheduler
+interval, the current 167-product catalog takes about 2 hours 48 minutes per pass.
 
-The response reports `processed`, `saved`, `cursor`, `nextCursor` and
-`totalProducts`. Incomplete checks return HTTP 502 and retailer error statuses;
-the cursor advances so one blocked product cannot stall the whole catalog.
-Other failures return a useful error instead of a successful empty result.
+Verified product URLs are stored separately in Redis (`discovery:v1:`) for seven
+days, renewed on successful checks. Existing saved price results can bootstrap
+this URL cache. Known URLs go straight to TinyFish Fetch, skipping Search for
+that retailer. Every price still requires a fresh fetched page, matching product
+identity and a valid retailer URL. If a known page fails validation, discovery is
+invalidated for the next pass; the existing good price and its expiry are retained.
+
+Retailers without known URLs still use Search. Successful search responses are
+cached for one hour; empty responses for six hours. Provider errors are not cached
+as empty searches. Both jobs share the existing 26-request rolling minute budget
+and respect provider Retry-After responses. This reduces repeat discovery; it does
+not remove provider limits or guarantee access to every retailer.
+
+The response reports `processed`, `saved`, `savedCount`, `cursor`, `nextCursor`
+and `totalProducts`. A partial batch saves its successful product independently,
+returns HTTP 502 with product/retailer errors, and advances past both products.
+Failed products retain their original saved price timestamps and expiry. Visitor
+lookups remain cache-only and consume no search or fetch allowance.
 
 ## Troubleshooting
 
 - **Saved prices unavailable:** check the Upstash configuration and service health.
 - **Awaiting saved prices:** no usable snapshot exists yet. Check scheduler logs;
-  a full pass takes about 5 hours 20 minutes at a two-minute interval.
+  a full pass takes about 2 hours 48 minutes at a two-minute interval.
 - **Scheduled refresh failures:** check provider access, service health and rate limits.
   Error codes `provider_http_401/402/403/404` require checking the TinyFish account
   or API configuration. HTTP 429 is reported as `rate_limited`.

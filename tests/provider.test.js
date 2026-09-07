@@ -62,3 +62,17 @@ test('Retry-After supports seconds, dates and absent headers', () => {
   assert.equal(retryDelay(new Date(190000).toUTCString(), 100000), 90000);
   assert.equal(retryDelay(null), 60000);
 });
+
+test('empty discovery has a bounded six-hour cache and is searched again after expiry', async () => {
+  let time = 100000; let calls = 0; let writtenTtl;
+  const redis = { get: async () => null, eval: async () => 0,
+    set: async (key, data, options) => { writtenTtl = options.ex; } };
+  const provider = createProviderFetch(redis, 'test', { now: () => time,
+    fetchImpl: async () => { calls++; return new Response(JSON.stringify({ results: [] })); } });
+  await provider(search);
+  assert.equal(writtenTtl, 21600);
+  time += 3 * 3600000;
+  await provider(search); assert.equal(calls, 1);
+  time += 3 * 3600000 + 1;
+  await provider(search); assert.equal(calls, 2);
+});

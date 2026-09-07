@@ -1,15 +1,17 @@
-// One product per invocation keeps search + page fetch within the 30s runtime.
+// Two concurrent products share provider pacing and the existing 30s runtime.
 import { Redis } from '@upstash/redis';
 import { RETAILERS, PRODUCTS, cacheKeyFor } from '../lib/catalog.js';
 import { fetchLivePrices } from '../lib/priceEngine.js';
-import { CACHE_VERSION, cacheTtl } from '../lib/cache.js';
+import { CACHE_VERSION, cacheTtl, readCached } from '../lib/cache.js';
 import { createProviderFetch } from '../lib/provider.js';
 
 const CURSOR_KEY = 'refresh:cursor';
+const DISCOVERY_TTL = 7 * 24 * 60 * 60;
+export const REFRESH_BATCH_SIZE = 2;
 export function createHandler({ redisFactory = () => new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN,
   retry: false, signal: () => AbortSignal.timeout(1000)
-}), lookup = fetchLivePrices } = {}) {
+}), lookup = fetchLivePrices, batchSize = REFRESH_BATCH_SIZE } = {}) {
   let providerFetch;
   return async function handler(req, res) {
     const secret = req.query?.secret || req.headers['x-refresh-secret'];
@@ -24,25 +26,46 @@ export function createHandler({ redisFactory = () => new Redis({
       const redis = redisFactory();
       const stored = Number(await redis.get(CURSOR_KEY));
       const cursor = Number.isInteger(stored) && stored >= 0 ? stored % PRODUCTS.length : 0;
-      const product = PRODUCTS[cursor];
-      const key = cacheKeyFor(product.brand, product.name);
-      // Refresh on every catalog pass, before the previous snapshot expires.
       providerFetch ||= createProviderFetch(redis, apiKey);
-      const payload = await lookup(apiKey, product.brand, product.name, product.cat, RETAILERS, { providerFetch });
-      const ttl = cacheTtl(payload);
-      if (ttl) {
-        await redis.set(key, JSON.stringify({
-          ...payload, schemaVersion: CACHE_VERSION, cached: true, updatedAt: Date.now()
-        }), { ex: ttl });
-      }
-      // Advance even on a blocked retailer so one product cannot stall the catalog.
-      const nextCursor = (cursor + 1) % PRODUCTS.length;
+      const batch = Array.from({ length: Math.min(batchSize, PRODUCTS.length) },
+        (_, offset) => PRODUCTS[(cursor + offset) % PRODUCTS.length]);
+      const outcomes = await Promise.all(batch.map(async product => {
+        const key = cacheKeyFor(product.brand, product.name);
+        const discoveryKey = `discovery:v1:${key}`;
+        const [discovery, previous] = await Promise.all([
+          redis.get(discoveryKey), redis.get(key)
+        ]);
+        const saved = readCached(previous, Date.now(), { allowStale: true });
+        // false explicitly invalidates a removed page. A missing discovery
+        // entry can be bootstrapped from the existing verified price cache.
+        const knownListings = discovery === false ? [] :
+          Array.isArray(discovery) ? discovery : saved?.results || [];
+        const payload = await lookup(apiKey, product.brand, product.name, product.cat, RETAILERS,
+          { providerFetch, knownListings });
+        const ttl = cacheTtl(payload);
+        if (payload.rediscover) {
+          await redis.set(discoveryKey, false, { ex: DISCOVERY_TTL });
+        } else if (ttl) {
+          await redis.set(discoveryKey, payload.results.filter(r => r.status === 'verified'),
+            { ex: DISCOVERY_TTL });
+        }
+        if (ttl) {
+          await redis.set(key, JSON.stringify({
+            ...payload, schemaVersion: CACHE_VERSION, cached: true, updatedAt: Date.now()
+          }), { ex: ttl });
+        }
+        return { product, payload, saved: !!ttl };
+      }));
+      const nextCursor = (cursor + batch.length) % PRODUCTS.length;
       await redis.set(CURSOR_KEY, nextCursor);
-      return res.status(payload.complete ? 200 : 502).json({
-        processed: [`${product.brand} ${product.name}`], saved: !!ttl,
+      return res.status(outcomes.every(o => o.payload.complete) ? 200 : 502).json({
+        processed: batch.map(p => `${p.brand} ${p.name}`),
+        saved: outcomes.every(o => o.saved), savedCount: outcomes.filter(o => o.saved).length,
         cursor, nextCursor, totalProducts: PRODUCTS.length,
-        errors: payload.results.filter(r => r.status === 'unavailable' || r.status === 'unverified')
-          .map(r => ({ retailer: r.retailer, status: r.status, error: r.error_code }))
+        errors: outcomes.flatMap(o => o.payload.results
+          .filter(r => r.status === 'unavailable' || r.status === 'unverified')
+          .map(r => ({ product: `${o.product.brand} ${o.product.name}`,
+            retailer: r.retailer, status: r.status, error: r.error_code })))
       });
     } catch {
       return res.status(503).json({ error: 'Refresh failed. Check the cache and provider configuration.' });

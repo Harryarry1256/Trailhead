@@ -135,3 +135,42 @@ test('network errors and aborts are reported separately', async () => {
     assert.equal(result.results[0].error_code, name === 'TimeoutError' ? 'timeout' : 'provider_unavailable');
   }
 });
+
+test('known retailer URLs bypass search but refresh and verify the actual price', async () => {
+  const calls = [];
+  const fetchImpl = async (request, init) => {
+    calls.push(request);
+    assert.equal(request, 'https://api.fetch.tinyfish.ai');
+    assert.deepEqual(JSON.parse(init.body).urls, [url]);
+    return json({ results: [{ ...page, text: `# ${title}\n\n## 1299.00\n\nADD TO CART` }] });
+  };
+  const data = await fetchLivePrices('test', 'Giant', 'Talon 29 3', 'mtb', [retailer], {
+    fetchImpl, knownListings: [{ retailer: retailer.name, status: 'verified', url, product_title: title, price_amount: 1099 }]
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(data.results[0].price_amount, 1299);
+  assert.equal(data.complete, true);
+  assert.equal(data.rediscover, false);
+});
+test('a moved known page fails safely and requests rediscovery', async () => {
+  const data = await fetchLivePrices('test', 'Giant', 'Talon 29 3', 'mtb', [retailer], {
+    fetchImpl: mockProvider({ pages: [{ ...page, final_url: 'https://evil.test/products/bike' }] }),
+    knownListings: [{ retailer: retailer.name, status: 'verified', url, product_title: title }]
+  });
+  assert.equal(data.complete, false);
+  assert.equal(data.results[0].price_amount, null);
+  assert.equal(data.rediscover, true);
+});
+test('untrusted cached URLs cannot bypass discovery or product identity checks', async () => {
+  let searches = 0;
+  const provider = mockProvider();
+  const data = await fetchLivePrices('test', 'Giant', 'Talon 29 3', 'mtb', [retailer], {
+    fetchImpl: async (...args) => { if (args[0].includes('api.search.')) searches++; return provider(...args); },
+    knownListings: [
+      { retailer: retailer.name, status: 'verified', url: 'https://evil.test/Product/bike', product_title: title },
+      { retailer: retailer.name, status: 'verified', url, product_title: 'Trek Marlin 7' }
+    ]
+  });
+  assert.equal(searches, 1);
+  assert.equal(data.results[0].price_amount, 1099);
+});
