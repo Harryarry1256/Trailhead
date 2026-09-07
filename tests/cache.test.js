@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { cacheTtl, readCached, CACHE_VERSION, MAX_CACHE_AGE_MS, CACHE_RETENTION_MS } from '../lib/cache.js';
 import { cacheKeyFor } from '../lib/catalog.js';
+import { PRODUCTS } from '../lib/catalog.js';
 const now = Date.now();
 const good = { schemaVersion: CACHE_VERSION, complete: true, updatedAt: now, results: [{ status: 'verified' }] };
 test('new namespace bypasses potentially incorrect legacy data', () => {
@@ -24,5 +25,14 @@ test('complete snapshots last between cron passes, with bounded stale retention'
 test('corrupt and future-dated cache entries are ignored', () => {
   for (const value of [null, 'invalid', {}, { ...good, updatedAt: now + 1000 }, { ...good, updatedAt: undefined }]) {
     assert.equal(readCached(value, now), null);
+  }
+});
+
+test('catalog keeps only the completed no-match removals and adds confirmed bike listings', () => {
+  for (const removed of ['Contend 3', 'Scultura 400', 'Strattos S5']) {
+    assert.equal(PRODUCTS.some(p => p.name === removed), false);
+  }
+  for (const added of ['Cascade 2 27.5', 'Cascade 3 29', 'Cascade 4 27.5', 'Cascade 4 29', 'Cascade 5 27.5', 'XTC Advanced 29 3', 'Marlin 5 Gen 3', 'Contend AR 2', 'Domane AL 2 Gen 4', 'Kalosi Lanes EVO LS']) {
+    assert.equal(PRODUCTS.some(p => p.name === added), true);
   }
 });
