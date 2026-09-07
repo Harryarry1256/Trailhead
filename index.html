@@ -505,6 +505,22 @@ body:has(.modal-backdrop.open){overflow:hidden}
 @media(max-width:900px){.hero-inner{grid-template-columns:1fr;gap:50px}.story-intro{grid-template-columns:1fr;gap:20px}.story-layout{grid-template-columns:1fr;gap:0}.story-steps{padding:0}.story-step{min-height:auto;padding:60px 0}.story-stage{position:sticky;top:76px;height:390px;margin-bottom:10px;order:-1}.filter-shell{grid-template-columns:1fr}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.nav-links{display:none}.nav-note{font-size:10px}.hero{padding:112px 18px 84px;min-height:730px}.hero .title{font-size:53px}.hero-sub{font-size:16px}.hero-visual{min-height:280px}.route-card{left:0;right:0;padding:20px;border-radius:22px}.route-bike{font-size:24px}.route-price strong{font-size:30px}.scroll-cue{left:18px;right:18px}.story,.catalog{padding-left:18px;padding-right:18px}.story{padding-top:90px}.story-stage{height:330px;border-radius:24px;top:66px}.stage-content{padding:30px}.stage-scene{inset:48px}.scene-card{padding:18px;border-radius:18px}.scene-card h4{font-size:26px}.catalog{padding-top:75px}.catalog-heading{display:block}.catalog-heading p{margin-top:20px}.filter-shell{padding:12px;border-radius:18px;gap:18px}.tabs{max-height:118px;overflow:auto;padding-bottom:3px}.grid{grid-template-columns:1fr;gap:12px}.product-card{min-height:190px;border-radius:18px}.modal-backdrop{padding:0;align-items:flex-end}.modal{border-radius:26px 26px 0 0;max-height:94vh}.modal-head{padding:26px 22px 28px}.modal-body{padding:22px}.retailer-row{align-items:flex-start}.price-wrap{flex-direction:column;align-items:flex-end;gap:7px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.spinner,.route-card{animation:none}.product-card,.story-step,.stage-scene{transition:none}}
+
+/* ---------- PRACTICAL RETAIL PASS ---------- */
+:root{--ink:#18231f;--forest:#172a23;--pine:#244238;--paper:#fafbfa;--mint:#f1f3f2;--orange:#f58220;--yellow:#ffc928;--blue:#3679a2;--muted:#5d6a64;--line:#d8dfdc;--sage:#e6ebe8;--display:'Space Grotesk','Oswald',sans-serif;--body:'DM Sans','Inter',sans-serif;--mono:'IBM Plex Mono','JetBrains Mono',monospace}
+body{background:var(--paper);color:var(--ink)}
+.hero{min-height:650px;padding:132px 30px 82px;background:linear-gradient(135deg,#172a23 0%,#203d32 68%,#274a3b 100%)}
+.hero:before{background:repeating-linear-gradient(0deg,transparent 0 47px,rgba(255,255,255,.05) 48px),repeating-linear-gradient(90deg,transparent 0 47px,rgba(255,255,255,.05) 48px),linear-gradient(135deg,rgba(23,42,35,.98),rgba(36,66,56,.92));opacity:1}
+.hero:after{opacity:.06;background-image:linear-gradient(120deg,transparent 0 48%,rgba(255,255,255,.5) 48.2% 48.5%,transparent 48.7%);background-size:180px 180px}
+.site-nav{padding:20px 30px;border-bottom:1px solid rgba(255,255,255,.16)}.wordmark{font-size:18px}.nav-links{gap:22px}.nav-note{letter-spacing:.07em}
+.hero .title{max-width:680px;font-size:clamp(46px,6.5vw,78px);letter-spacing:-.055em}.hero-sub{max-width:520px;font-size:17px;color:#d2ded8}.hero-actions{gap:12px}.hero-cta{background:var(--orange);color:#fff;border-radius:7px;padding:14px 18px}.hero-cta:hover{background:#ff963a}.ghost-cta{border-radius:7px;border-color:rgba(255,255,255,.3)}
+.hero-visual{min-height:340px}.retail-visual{position:absolute;top:10%;left:5%;right:0;background:#fff;color:var(--ink);border-radius:10px;padding:26px;box-shadow:0 22px 52px rgba(0,0,0,.24);border-top:6px solid var(--orange)}.retail-visual-head,.retail-visual-foot{display:flex;justify-content:space-between;gap:16px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}.retail-shelf{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:25px 0 24px}.shelf-item{min-height:126px;padding:14px 12px;display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--line);border-top:4px solid var(--pine);border-radius:6px;background:#f7f8f7}.shelf-item span{font-family:var(--mono);font-size:10px;color:var(--muted)}.shelf-item strong{font-family:var(--display);font-size:22px;letter-spacing:-.04em}.shelf-item small{font-size:11px;color:var(--muted);line-height:1.35}.shelf-item-orange{border-top-color:var(--orange)}.shelf-item-blue{border-top-color:var(--blue)}.shelf-item-green{border-top-color:var(--pine)}.retail-visual-foot{padding-top:16px;border-top:1px solid var(--line);letter-spacing:.06em}
+.story{padding:112px 30px 100px;background:#fff}.story-intro{margin-bottom:58px}.section-kicker{color:var(--orange)}.story-intro h2,.catalog-heading h2{letter-spacing:-.055em}.story-intro p,.catalog-heading p{color:var(--muted)}
+.story-layout{grid-template-columns:minmax(280px,.75fr) minmax(400px,1fr);gap:58px;align-items:start}.story-steps{padding:0;max-height:calc(100vh - 160px);overflow-y:auto;scroll-snap-type:y mandatory;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--orange) transparent}.story-step{min-height:calc(100vh - 160px);padding:42px 36px 42px 0;display:flex;flex-direction:column;justify-content:center;opacity:.35;scroll-snap-align:start;border-top:1px solid var(--line)}.story-step:first-child{border-top:0}.story-step.is-active{opacity:1}.story-step h3{font-size:34px;letter-spacing:-.055em}.story-step p{color:var(--muted)}
+.story-stage{top:112px;height:calc(100vh - 180px);min-height:500px;max-height:640px;border-radius:10px;background:var(--pine);box-shadow:0 14px 35px rgba(18,47,36,.14);border:1px solid rgba(255,255,255,.15)}.story-stage:before{background:linear-gradient(135deg,rgba(255,255,255,.06),transparent 50%),radial-gradient(circle at 78% 22%,rgba(255,201,40,.18),transparent 25%);transform:none}.stage-grid{background-image:linear-gradient(rgba(255,255,255,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.08) 1px,transparent 1px);background-size:64px 64px;opacity:.8}.stage-meter{left:24px;top:24px;bottom:24px;background:rgba(255,255,255,.18)}.stage-meter span{background:var(--orange)}.stage-pill{top:24px;right:24px;color:#d7e2dc}.stage-scene{inset:60px;opacity:0;transform:translateY(12px) scale(.98);transition:opacity .35s ease,transform .45s ease}.stage-scene.is-active{opacity:1;transform:none}.scene-card{width:min(390px,100%);border-radius:8px;border-top:5px solid var(--orange);padding:25px;box-shadow:0 12px 28px rgba(0,0,0,.18)}.scene-card h4{font-size:30px}.scene-line{border-color:var(--line)}.scene-line strong.accent{color:var(--orange)}.scene-foot{color:var(--muted)}.scene-match{width:min(390px,100%);background:#fff;color:var(--ink);border-radius:8px;border-top:5px solid var(--blue);padding:28px;box-shadow:0 12px 28px rgba(0,0,0,.18)}.scene-match .match-mark{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:var(--blue);color:#fff;font-size:22px;font-weight:700;margin-bottom:25px}.scene-match small{font-family:var(--mono);color:var(--muted);font-size:10px;letter-spacing:.12em;text-transform:uppercase}.scene-match strong{display:block;font-family:var(--display);font-size:40px;letter-spacing:-.06em;margin:14px 0 10px}.scene-match p{margin:0;color:var(--muted);font-size:14px}.scene-ring{display:none}.scene-tally strong{color:var(--yellow)}
+.catalog{padding-top:78px;background:var(--mint);border-top:1px solid var(--line)}.filter-shell{border-radius:8px;background:#fff;box-shadow:0 8px 20px rgba(25,47,38,.06);padding:18px}.search-bar{border-radius:6px}.tab{border-radius:5px;padding:9px 11px}.tab.active{background:var(--orange);border-color:var(--orange);color:#fff}.tab:hover{border-color:var(--orange)}.product-card{border-radius:10px;box-shadow:0 2px 0 rgba(23,42,35,.04)}.product-card:hover{transform:translateY(-3px);box-shadow:0 12px 25px rgba(23,42,35,.12);border-color:rgba(245,130,32,.6)}.product-card:before{border-radius:0 0 0 100%;background:#eef1ef;opacity:1}.card-arrow{background:var(--orange);color:#fff}.modal{border-radius:10px}.modal-head{background:var(--pine);border-top:5px solid var(--orange)}.modal-head:after{border-color:rgba(255,201,40,.35);box-shadow:0 0 0 35px rgba(255,201,40,.06),0 0 0 70px rgba(255,201,40,.03)}.retailer-row.cheapest{background:#fff4e9;border-left:4px solid var(--orange)}.visit-link{background:var(--orange);color:#fff}.retry-btn{border-color:var(--orange);color:var(--orange)}
+@media(max-width:900px){.story-layout{grid-template-columns:1fr;gap:24px}.story-stage{position:sticky;top:76px;height:380px;min-height:0;max-height:none;order:-1}.story-steps{max-height:calc(100vh - 120px);margin-top:0}.story-step{min-height:calc(100vh - 140px);padding:36px 0}.retail-visual{left:0}.retail-shelf{gap:8px}.shelf-item{min-height:110px}}
+@media(max-width:600px){.hero{padding:110px 18px 84px;min-height:710px}.hero .title{font-size:52px}.hero-sub{font-size:16px}.site-nav{padding:18px}.retail-visual{padding:19px;top:0}.retail-shelf{margin:18px 0;gap:6px}.shelf-item{min-height:104px;padding:11px 9px}.shelf-item strong{font-size:18px}.shelf-item small{font-size:10px}.story,.catalog{padding-left:18px;padding-right:18px}.story{padding-top:82px}.story-stage{height:320px;top:66px;border-radius:8px}.stage-content{padding:24px}.stage-scene{inset:42px}.scene-card,.scene-match{padding:19px}.scene-card h4{font-size:25px}.scene-match strong{font-size:32px}.catalog{padding-top:68px}.product-card{min-height:185px}}
 </style>
 </head>
 <body>
@@ -534,15 +550,15 @@ body:has(.modal-backdrop.open){overflow:hidden}
       </div>
       <div class="retailer-strip" id="retailerStrip"></div>
     </div>
-    <div class="hero-visual" aria-label="Illustration of a saved bike price comparison">
-      <div class="orbit" aria-hidden="true"></div>
-      <div class="route-card">
-        <div class="route-top"><span class="route-label">Saved price trail / 01</span><span class="route-live">Live catalog</span></div>
-        <div class="route-bike">Giant Talon 29 3</div>
-        <div class="route-line" aria-hidden="true"></div>
-        <div class="route-stops"><span>Discover</span><span>Match</span><span>Compare</span></div>
-        <div class="route-price"><div><span>Best saved price</span><strong>NZ$906.67</strong></div><span>Evo Cycles ↗</span></div>
-        <div class="route-badge">MATCHED<br/>LISTING</div>
+    <div class="hero-visual" aria-label="The Trailhead shopping flow">
+      <div class="retail-visual">
+        <div class="retail-visual-head"><span>TRAILHEAD GUIDE</span><span>01 / 03</span></div>
+        <div class="retail-shelf">
+          <div class="shelf-item shelf-item-orange"><span>01</span><strong>Browse</strong><small>Start with the ride</small></div>
+          <div class="shelf-item shelf-item-blue"><span>02</span><strong>Compare</strong><small>Match the listing</small></div>
+          <div class="shelf-item shelf-item-green"><span>03</span><strong>Choose</strong><small>Buy with confidence</small></div>
+        </div>
+        <div class="retail-visual-foot">Product listings · saved prices · retailer links</div>
       </div>
     </div>
   </div>
@@ -561,10 +577,10 @@ body:has(.modal-backdrop.open){overflow:hidden}
       <article class="story-step"><span class="step-index">03 / CHOOSE</span><h3>Make the call.</h3><p>Compare the saved prices, open the retailer listing, and confirm the details that matter before you buy.</p></article>
     </div>
     <div class="story-stage" id="storyStage" aria-hidden="true">
-      <div class="stage-grid"></div><div class="stage-meter"><span></span></div><span class="stage-pill">the trailhead method</span>
+      <div class="stage-grid"></div><div class="stage-meter"><span></span></div><span class="stage-pill">how trailhead works</span>
       <div class="stage-content">
         <div class="stage-scene scene-0 is-active"><div class="scene-card"><small>01 / The shortlist</small><h4>Find a better starting point.</h4><div class="scene-lines"><div class="scene-line"><span>Mountain bikes</span><strong>42</strong></div><div class="scene-line"><span>Road bikes</span><strong>18</strong></div><div class="scene-line"><span>E-bikes</span><strong class="accent">16</strong></div></div><div class="scene-foot">A focused catalog, ready when you are.</div></div></div>
-        <div class="stage-scene scene-1"><div class="scene-ring"><span>Exact<br/>match</span></div></div>
+        <div class="stage-scene scene-1"><div class="scene-match"><span class="match-mark">✓</span><small>02 / MATCH</small><strong>Exact match</strong><p>Listing title and product page aligned.</p></div></div>
         <div class="stage-scene scene-2"><div class="scene-tally"><strong>4</strong><span>NZ retailers in one view</span></div></div>
       </div>
     </div>
@@ -702,22 +718,32 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
 /* ---------------- SCROLL STORY ---------------- */
 const storySection = document.getElementById('story');
 const storyStage = document.getElementById('storyStage');
+const storyStepsEl = document.querySelector?.('.story-steps') || null;
 const storySteps = [...(document.querySelectorAll?.('.story-step') || [])];
+const stageScenes = [...(document.querySelectorAll?.('.stage-scene') || [])];
+function setStoryActive(index){
+  storySteps.forEach((step, i) => step.classList.toggle('is-active', i === index));
+  stageScenes.forEach((scene, i) => scene.classList.toggle('is-active', i === index));
+}
 function updateStoryProgress(){
   if (!storySection || !storyStage) return;
-  const rect = storySection.getBoundingClientRect();
-  const progress = Math.min(1, Math.max(0, (window.innerHeight * 0.58 - rect.top) / Math.max(1, rect.height - window.innerHeight * 0.24)));
+  const internalMax = storyStepsEl ? storyStepsEl.scrollHeight - storyStepsEl.clientHeight : 0;
+  const progress = internalMax > 0
+    ? storyStepsEl.scrollTop / internalMax
+    : Math.min(1, Math.max(0, (window.innerHeight * 0.58 - storySection.getBoundingClientRect().top) / Math.max(1, storySection.offsetHeight - window.innerHeight * 0.24)));
   storyStage.style.setProperty('--story-progress', progress.toFixed(3));
-  const active = Math.min(2, Math.floor(progress * 3));
-  document.querySelectorAll('.stage-scene').forEach((scene, i) => scene.classList.toggle('is-active', i === active));
 }
 if (storySteps.length) {
   const storyObserver = new IntersectionObserver(entries => {
-    entries.forEach(entry => entry.target.classList.toggle('is-active', entry.isIntersecting));
-  }, { rootMargin: '-28% 0px -42% 0px', threshold: 0 });
+    entries.forEach(entry => {
+      if (entry.isIntersecting) setStoryActive(storySteps.indexOf(entry.target));
+    });
+  }, { root: storyStepsEl, rootMargin: '-35% 0px -45% 0px', threshold: 0 });
   storySteps.forEach(step => storyObserver.observe(step));
+  storyStepsEl?.addEventListener('scroll', updateStoryProgress, { passive: true });
   window.addEventListener('scroll', updateStoryProgress, { passive: true });
   window.addEventListener('resize', updateStoryProgress);
+  setStoryActive(0);
   updateStoryProgress();
 }
 
